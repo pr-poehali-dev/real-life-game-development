@@ -2,646 +2,575 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import Icon from '@/components/ui/icon';
 
-interface GameStats {
-  health: number;
-  energy: number;
-  money: number;
-  happiness: number;
-  age: number;
-  level: number;
-}
-
-interface Location {
+interface GameElement {
   id: string;
+  type: 'character' | 'item' | 'location' | 'action';
   name: string;
   description: string;
   icon: string;
-  actions: LocationAction[];
-  position: { x: number; y: number };
-}
-
-interface LocationAction {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  consequences: {
-    health?: number;
-    energy?: number;
-    money?: number;
-    happiness?: number;
+  properties: {
+    [key: string]: any;
   };
-  cost?: {
-    energy?: number;
-    money?: number;
-  };
+  position?: { x: number; y: number };
 }
 
-interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  unlocked: boolean;
-  icon: string;
-}
-
-interface InventoryItem {
+interface GameProject {
   id: string;
   name: string;
-  type: string;
-  value: number;
-  icon: string;
+  description: string;
+  elements: GameElement[];
+  gameLogic: string;
+  lastModified: Date;
 }
 
-interface LifeEvent {
-  id: string;
-  title: string;
-  description: string;
-  choices: {
-    text: string;
-    consequences: {
-      health?: number;
-      energy?: number;
-      money?: number;
-      happiness?: number;
+const GameEditor = () => {
+  const [projects, setProjects] = useState<GameProject[]>([]);
+  const [currentProject, setCurrentProject] = useState<GameProject | null>(null);
+  const [selectedElement, setSelectedElement] = useState<GameElement | null>(null);
+  const [showElementModal, setShowElementModal] = useState(false);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Создание нового проекта
+  const createNewProject = (name: string, description: string) => {
+    const newProject: GameProject = {
+      id: Date.now().toString(),
+      name,
+      description,
+      elements: [],
+      gameLogic: '',
+      lastModified: new Date()
     };
-  }[];
-}
-
-const RealLifeGame = () => {
-  const [gameStats, setGameStats] = useState<GameStats>({
-    health: 85,
-    energy: 70,
-    money: 2500,
-    happiness: 75,
-    age: 25,
-    level: 3
-  });
-
-  const [currentEvent, setCurrentEvent] = useState<LifeEvent | null>(null);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<string>('home');
-  const [playerPosition, setPlayerPosition] = useState({ x: 250, y: 200 });
-
-  const achievements: Achievement[] = [
-    { id: '1', title: 'Первая работа', description: 'Устроился на первую работу', unlocked: true, icon: 'Briefcase' },
-    { id: '2', title: 'Покупка машины', description: 'Купил первую машину', unlocked: true, icon: 'Car' },
-    { id: '3', title: 'Переезд', description: 'Переехал в новую квартиру', unlocked: false, icon: 'Home' },
-    { id: '4', title: 'Повышение', description: 'Получил повышение на работе', unlocked: false, icon: 'TrendingUp' }
-  ];
-
-  const inventory: InventoryItem[] = [
-    { id: '1', name: 'Смартфон iPhone 15', type: 'Электроника', value: 1200, icon: 'Smartphone' },
-    { id: '2', name: 'Водительские права', type: 'Документы', value: 0, icon: 'CreditCard' },
-    { id: '3', name: 'Кожаная куртка', type: 'Одежда', value: 300, icon: 'ShirtIcon' },
-    { id: '4', name: 'Ключи от машины', type: 'Важное', value: 0, icon: 'Key' }
-  ];
-
-  const locations: Location[] = [
-    {
-      id: 'home',
-      name: 'Дом',
-      description: 'Ваш уютный дом, где можно отдохнуть и восстановить силы',
-      icon: 'Home',
-      position: { x: 250, y: 200 },
-      actions: [
-        { id: 'rest', name: 'Отдохнуть', description: '+30 энергии', icon: 'Bed', consequences: { energy: 30 } },
-        { id: 'cook', name: 'Приготовить еду', description: '+3 здоровье', icon: 'ChefHat', consequences: { health: 3 }, cost: { money: 20 } },
-        { id: 'watch_tv', name: 'Смотреть ТВ', description: '+5 счастье', icon: 'Tv', consequences: { happiness: 5 }, cost: { energy: 5 } }
-      ]
-    },
-    {
-      id: 'office',
-      name: 'Офис',
-      description: 'Место работы, где можно заработать деньги',
-      icon: 'Building',
-      position: { x: 450, y: 150 },
-      actions: [
-        { id: 'work', name: 'Работать', description: '+$200, -10 энергии', icon: 'Briefcase', consequences: { money: 200 }, cost: { energy: 10 } },
-        { id: 'overtime', name: 'Переработка', description: '+$350, -25 энергии', icon: 'Clock', consequences: { money: 350 }, cost: { energy: 25 } },
-        { id: 'meeting', name: 'Совещание', description: '+5 уровень', icon: 'Users', consequences: { happiness: 3 }, cost: { energy: 5 } }
-      ]
-    },
-    {
-      id: 'gym',
-      name: 'Спортзал',
-      description: 'Место для поддержания физической формы',
-      icon: 'Dumbbell',
-      position: { x: 150, y: 350 },
-      actions: [
-        { id: 'workout', name: 'Тренировка', description: '+10 здоровье, -15 энергия', icon: 'Dumbbell', consequences: { health: 10 }, cost: { energy: 15, money: 30 } },
-        { id: 'cardio', name: 'Кардио', description: '+5 здоровье, -10 энергия', icon: 'Activity', consequences: { health: 5 }, cost: { energy: 10, money: 20 } },
-        { id: 'trainer', name: 'Персональный тренер', description: '+15 здоровье', icon: 'UserCheck', consequences: { health: 15 }, cost: { energy: 20, money: 100 } }
-      ]
-    },
-    {
-      id: 'mall',
-      name: 'Торговый центр',
-      description: 'Место для покупок и развлечений',
-      icon: 'ShoppingBag',
-      position: { x: 350, y: 320 },
-      actions: [
-        { id: 'shop_clothes', name: 'Купить одежду', description: '+10 счастье', icon: 'Shirt', consequences: { happiness: 10 }, cost: { money: 150 } },
-        { id: 'eat_out', name: 'Поесть в ресторане', description: '+8 счастье, +5 здоровье', icon: 'Utensils', consequences: { happiness: 8, health: 5 }, cost: { money: 80 } },
-        { id: 'cinema', name: 'Кино', description: '+12 счастье', icon: 'Film', consequences: { happiness: 12 }, cost: { money: 25, energy: 5 } }
-      ]
-    },
-    {
-      id: 'park',
-      name: 'Парк',
-      description: 'Зеленая зона для отдыха и прогулок',
-      icon: 'Trees',
-      position: { x: 150, y: 100 },
-      actions: [
-        { id: 'walk', name: 'Прогулка', description: '+5 здоровье, +8 счастье', icon: 'Footprints', consequences: { health: 5, happiness: 8 }, cost: { energy: 8 } },
-        { id: 'jog', name: 'Пробежка', description: '+8 здоровье', icon: 'Activity', consequences: { health: 8 }, cost: { energy: 15 } },
-        { id: 'picnic', name: 'Пикник', description: '+15 счастье', icon: 'Coffee', consequences: { happiness: 15 }, cost: { money: 40, energy: 10 } }
-      ]
-    },
-    {
-      id: 'cafe',
-      name: 'Кафе',
-      description: 'Уютное место для встреч с друзьями',
-      icon: 'Coffee',
-      position: { x: 400, y: 250 },
-      actions: [
-        { id: 'meet_friends', name: 'Встреча с друзьями', description: '+15 счастье', icon: 'Users', consequences: { happiness: 15 }, cost: { money: 60, energy: 5 } },
-        { id: 'work_laptop', name: 'Работа за ноутбуком', description: '+$100', icon: 'Laptop', consequences: { money: 100 }, cost: { energy: 8 } },
-        { id: 'date', name: 'Свидание', description: '+20 счастье', icon: 'Heart', consequences: { happiness: 20 }, cost: { money: 120, energy: 10 } }
-      ]
-    }
-  ];
-
-  const lifeEvents: LifeEvent[] = [
-    {
-      id: '1',
-      title: 'Неожиданное предложение работы',
-      description: 'Вам поступило предложение о работе в крупной IT-компании с зарплатой в 2 раза выше текущей, но потребуется переезд в другой город.',
-      choices: [
-        { text: 'Принять предложение', consequences: { money: 1000, happiness: -10, energy: -20 } },
-        { text: 'Отказаться и остаться', consequences: { happiness: 10, energy: 5 } }
-      ]
-    },
-    {
-      id: '2',
-      title: 'Встреча со старым другом',
-      description: 'Случайно встретили старого школьного друга, который предлагает вместе открыть бизнес.',
-      choices: [
-        { text: 'Инвестировать деньги', consequences: { money: -500, happiness: 15 } },
-        { text: 'Вежливо отказаться', consequences: { happiness: -5 } }
-      ]
-    },
-    {
-      id: '3',
-      title: 'Проблемы со здоровьем',
-      description: 'На плановом медосмотре врач рекомендует больше заниматься спортом и правильно питаться.',
-      choices: [
-        { text: 'Записаться в спортзал', consequences: { health: 15, money: -200, energy: -10 } },
-        { text: 'Игнорировать совет', consequences: { health: -5, happiness: 5 } }
-      ]
-    }
-  ];
-
-  const triggerRandomEvent = () => {
-    const randomEvent = lifeEvents[Math.floor(Math.random() * lifeEvents.length)];
-    setCurrentEvent(randomEvent);
-    setShowEventModal(true);
+    setProjects(prev => [...prev, newProject]);
+    setCurrentProject(newProject);
+    setShowProjectModal(false);
   };
 
-  const handleChoice = (choice: LifeEvent['choices'][0]) => {
-    setGameStats(prev => ({
-      ...prev,
-      health: Math.max(0, Math.min(100, prev.health + (choice.consequences.health || 0))),
-      energy: Math.max(0, Math.min(100, prev.energy + (choice.consequences.energy || 0))),
-      money: Math.max(0, prev.money + (choice.consequences.money || 0)),
-      happiness: Math.max(0, Math.min(100, prev.happiness + (choice.consequences.happiness || 0)))
-    }));
-    setShowEventModal(false);
-    setCurrentEvent(null);
+  // Добавление элемента
+  const addElement = (element: Omit<GameElement, 'id'>) => {
+    if (!currentProject) return;
+    
+    const newElement: GameElement = {
+      ...element,
+      id: Date.now().toString()
+    };
+    
+    const updatedProject = {
+      ...currentProject,
+      elements: [...currentProject.elements, newElement],
+      lastModified: new Date()
+    };
+    
+    setCurrentProject(updatedProject);
+    setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
+    setShowElementModal(false);
   };
 
-  const handleLocationAction = (action: LocationAction) => {
-    // Проверяем, хватает ли ресурсов
-    if (action.cost?.energy && gameStats.energy < action.cost.energy) {
-      alert('Недостаточно энергии!');
-      return;
-    }
-    if (action.cost?.money && gameStats.money < action.cost.money) {
-      alert('Недостаточно денег!');
-      return;
-    }
-
-    // Применяем изменения
-    setGameStats(prev => ({
-      ...prev,
-      health: Math.max(0, Math.min(100, prev.health + (action.consequences.health || 0))),
-      energy: Math.max(0, Math.min(100, prev.energy + (action.consequences.energy || 0) - (action.cost?.energy || 0))),
-      money: Math.max(0, prev.money + (action.consequences.money || 0) - (action.cost?.money || 0)),
-      happiness: Math.max(0, Math.min(100, prev.happiness + (action.consequences.happiness || 0)))
-    }));
+  // Удаление элемента
+  const deleteElement = (elementId: string) => {
+    if (!currentProject) return;
+    
+    const updatedProject = {
+      ...currentProject,
+      elements: currentProject.elements.filter(e => e.id !== elementId),
+      lastModified: new Date()
+    };
+    
+    setCurrentProject(updatedProject);
+    setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
   };
 
-  const moveToLocation = (locationId: string) => {
-    const location = locations.find(loc => loc.id === locationId);
-    if (location && gameStats.energy >= 5) {
-      setCurrentLocation(locationId);
-      setPlayerPosition(location.position);
-      setGameStats(prev => ({ ...prev, energy: Math.max(0, prev.energy - 5) }));
-    } else if (gameStats.energy < 5) {
-      alert('Недостаточно энергии для перемещения!');
-    }
+  // Обновление элемента
+  const updateElement = (updatedElement: GameElement) => {
+    if (!currentProject) return;
+    
+    const updatedProject = {
+      ...currentProject,
+      elements: currentProject.elements.map(e => e.id === updatedElement.id ? updatedElement : e),
+      lastModified: new Date()
+    };
+    
+    setCurrentProject(updatedProject);
+    setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
   };
 
-  const getCurrentLocation = () => {
-    return locations.find(loc => loc.id === currentLocation) || locations[0];
-  };
-
-  useEffect(() => {
-    const eventTimer = setInterval(() => {
-      if (Math.random() < 0.3 && !showEventModal) { // 30% шанс события каждые 10 секунд
-        triggerRandomEvent();
+  // Шаблоны элементов
+  const elementTemplates = {
+    character: {
+      type: 'character' as const,
+      name: 'Новый персонаж',
+      description: 'Описание персонажа',
+      icon: 'User',
+      properties: {
+        health: 100,
+        strength: 10,
+        dialogue: 'Привет! Как дела?'
       }
-    }, 10000);
+    },
+    item: {
+      type: 'item' as const,
+      name: 'Новый предмет',
+      description: 'Описание предмета',
+      icon: 'Package',
+      properties: {
+        value: 100,
+        rarity: 'common',
+        effect: 'none'
+      }
+    },
+    location: {
+      type: 'location' as const,
+      name: 'Новая локация',
+      description: 'Описание локации',
+      icon: 'MapPin',
+      properties: {
+        background: 'forest',
+        music: 'ambient',
+        connections: []
+      },
+      position: { x: 100, y: 100 }
+    },
+    action: {
+      type: 'action' as const,
+      name: 'Новое действие',
+      description: 'Описание действия',
+      icon: 'Zap',
+      properties: {
+        cost: 10,
+        effect: 'heal',
+        value: 20
+      }
+    }
+  };
 
-    return () => clearInterval(eventTimer);
-  }, [showEventModal]);
+  // Рендер игрового проекта
+  const renderGamePreview = () => {
+    if (!currentProject || !isPlaying) return null;
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">REAL LIFE GAME</h1>
-          <p className="text-slate-600">Симулятор реальной жизни с выборами и последствиями</p>
+    const locations = currentProject.elements.filter(e => e.type === 'location');
+    const characters = currentProject.elements.filter(e => e.type === 'character');
+    const items = currentProject.elements.filter(e => e.type === 'item');
+
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Игра: {currentProject.name}</h3>
+          <Button onClick={() => setIsPlaying(false)} variant="outline">
+            <Icon name="Edit" size={16} className="mr-2" />
+            Редактировать
+          </Button>
         </div>
-
-        {/* Player Stats */}
-        <Card className="mb-6 bg-white/80 backdrop-blur-sm">
+        
+        {/* Игровая карта */}
+        <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Icon name="User" size={24} />
-              Персонаж - Уровень {gameStats.level}
-            </CardTitle>
+            <CardTitle>Игровой мир</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="Heart" size={16} className="text-red-500" />
-                  <span className="text-sm font-medium">Здоровье</span>
-                </div>
-                <Progress value={gameStats.health} className="h-2" />
-                <span className="text-xs text-slate-600">{gameStats.health}/100</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="Zap" size={16} className="text-yellow-500" />
-                  <span className="text-sm font-medium">Энергия</span>
-                </div>
-                <Progress value={gameStats.energy} className="h-2" />
-                <span className="text-xs text-slate-600">{gameStats.energy}/100</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="DollarSign" size={16} className="text-green-500" />
-                  <span className="text-sm font-medium">Деньги</span>
-                </div>
-                <span className="text-lg font-bold text-green-600">${gameStats.money}</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="Smile" size={16} className="text-blue-500" />
-                  <span className="text-sm font-medium">Счастье</span>
-                </div>
-                <Progress value={gameStats.happiness} className="h-2" />
-                <span className="text-xs text-slate-600">{gameStats.happiness}/100</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon name="Calendar" size={16} className="text-purple-500" />
-                  <span className="text-sm font-medium">Возраст</span>
-                </div>
-                <span className="text-lg font-bold">{gameStats.age} лет</span>
-              </div>
+            <div className="relative bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 h-96 overflow-hidden">
+              <svg className="w-full h-full" viewBox="0 0 500 400">
+                {locations.map((location) => (
+                  <g key={location.id}>
+                    <circle
+                      cx={location.position?.x || 100}
+                      cy={location.position?.y || 100}
+                      r="30"
+                      fill="#3b82f6"
+                      stroke="#1d4ed8"
+                      strokeWidth="2"
+                      className="cursor-pointer hover:fill-blue-600 transition-colors"
+                    />
+                    <text
+                      x={location.position?.x || 100}
+                      y={(location.position?.y || 100) + 45}
+                      textAnchor="middle"
+                      className="text-xs font-medium fill-slate-700"
+                    >
+                      {location.name}
+                    </text>
+                  </g>
+                ))}
+              </svg>
             </div>
           </CardContent>
         </Card>
 
-        {/* Main Game Interface */}
-        <Tabs defaultValue="map" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="map" className="flex items-center gap-2">
-              <Icon name="Map" size={16} />
-              Карта
-            </TabsTrigger>
-            <TabsTrigger value="location" className="flex items-center gap-2">
-              <Icon name={getCurrentLocation().icon as any} size={16} />
-              {getCurrentLocation().name}
-            </TabsTrigger>
-            <TabsTrigger value="inventory" className="flex items-center gap-2">
-              <Icon name="Package" size={16} />
-              Инвентарь
-            </TabsTrigger>
-            <TabsTrigger value="achievements" className="flex items-center gap-2">
-              <Icon name="Trophy" size={16} />
-              Достижения
-            </TabsTrigger>
-            <TabsTrigger value="shop" className="flex items-center gap-2">
-              <Icon name="ShoppingCart" size={16} />
-              Магазин
-            </TabsTrigger>
-            <TabsTrigger value="characters" className="flex items-center gap-2">
-              <Icon name="Users" size={16} />
-              Персонажи
-            </TabsTrigger>
-          </TabsList>
+        {/* Персонажи */}
+        {characters.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Персонажи</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {characters.map((character) => (
+                  <Card key={character.id} className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Icon name={character.icon as any} size={24} className="text-blue-600" />
+                      <div className="flex-1">
+                        <h4 className="font-medium">{character.name}</h4>
+                        <p className="text-sm text-slate-600">{character.description}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          "{character.properties.dialogue}"
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-          <TabsContent value="map" className="space-y-4">
+        {/* Предметы */}
+        {items.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Предметы</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {items.map((item) => (
+                  <Card key={item.id} className="p-3">
+                    <div className="flex items-center gap-2">
+                      <Icon name={item.icon as any} size={20} className="text-purple-600" />
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium">{item.name}</h4>
+                        <p className="text-xs text-slate-600">{item.properties.rarity}</p>
+                        <p className="text-xs text-green-600">{item.properties.value}₽</p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-slate-800 mb-2">🎮 GAME STUDIO</h1>
+          <p className="text-slate-600">Создавайте и редактируйте игры прямо в браузере</p>
+        </div>
+
+        {!currentProject && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Icon name="FolderOpen" size={24} />
+                Мои проекты
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                {projects.map((project) => (
+                  <Card key={project.id} className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setCurrentProject(project)}>
+                    <h3 className="font-semibold mb-2">{project.name}</h3>
+                    <p className="text-sm text-slate-600 mb-2">{project.description}</p>
+                    <div className="flex justify-between items-center text-xs text-slate-500">
+                      <span>{project.elements.length} элементов</span>
+                      <span>{new Date(project.lastModified).toLocaleDateString()}</span>
+                    </div>
+                  </Card>
+                ))}
+                
+                <Dialog open={showProjectModal} onOpenChange={setShowProjectModal}>
+                  <DialogTrigger asChild>
+                    <Card className="p-4 cursor-pointer border-dashed border-2 hover:bg-slate-50 transition-colors flex items-center justify-center">
+                      <div className="text-center">
+                        <Icon name="Plus" size={32} className="mx-auto mb-2 text-slate-400" />
+                        <p className="text-sm text-slate-600">Создать новый проект</p>
+                      </div>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Новый проект</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.target as HTMLFormElement);
+                      createNewProject(
+                        formData.get('name') as string,
+                        formData.get('description') as string
+                      );
+                    }}>
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="name">Название проекта</Label>
+                          <Input id="name" name="name" placeholder="Моя крутая игра" required />
+                        </div>
+                        <div>
+                          <Label htmlFor="description">Описание</Label>
+                          <Textarea id="description" name="description" placeholder="Описание игры..." />
+                        </div>
+                        <Button type="submit" className="w-full">Создать проект</Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {currentProject && (
+          <div className="space-y-6">
+            {/* Панель проекта */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon name="Map" size={24} />
-                  Карта города
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 h-96 overflow-hidden">
-                  {/* Игровая карта */}
-                  <svg className="w-full h-full" viewBox="0 0 500 400">
-                    {/* Дороги */}
-                    <path d="M0 200 L500 200" stroke="#94a3b8" strokeWidth="4" fill="none" />
-                    <path d="M250 0 L250 400" stroke="#94a3b8" strokeWidth="4" fill="none" />
-                    <path d="M150 100 L400 250" stroke="#94a3b8" strokeWidth="3" fill="none" />
-                    <path d="M350 150 L350 320" stroke="#94a3b8" strokeWidth="3" fill="none" />
-                    
-                    {/* Локации */}
-                    {locations.map((location) => (
-                      <g key={location.id}>
-                        <circle
-                          cx={location.position.x}
-                          cy={location.position.y}
-                          r="20"
-                          fill={currentLocation === location.id ? '#3b82f6' : '#e2e8f0'}
-                          stroke={currentLocation === location.id ? '#1d4ed8' : '#94a3b8'}
-                          strokeWidth="2"
-                          className="cursor-pointer hover:fill-blue-200 transition-colors"
-                          onClick={() => moveToLocation(location.id)}
-                        />
-                        <text
-                          x={location.position.x}
-                          y={location.position.y + 35}
-                          textAnchor="middle"
-                          className="text-xs font-medium fill-slate-700 cursor-pointer"
-                          onClick={() => moveToLocation(location.id)}
-                        >
-                          {location.name}
-                        </text>
-                      </g>
-                    ))}
-                    
-                    {/* Игрок */}
-                    <circle
-                      cx={playerPosition.x}
-                      cy={playerPosition.y}
-                      r="8"
-                      fill="#ef4444"
-                      stroke="#dc2626"
-                      strokeWidth="2"
-                      className="animate-pulse"
-                    />
-                  </svg>
-                  
-                  <div className="absolute bottom-4 left-4 bg-white/90 rounded-lg p-3 text-sm">
-                    <p className="font-medium">💡 Подсказка:</p>
-                    <p>Нажмите на локацию, чтобы переместиться туда (-5 энергии)</p>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Icon name="Gamepad2" size={24} />
+                      {currentProject.name}
+                    </CardTitle>
+                    <p className="text-slate-600 mt-1">{currentProject.description}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={() => setIsPlaying(!isPlaying)} className={isPlaying ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}>
+                      <Icon name={isPlaying ? "Square" : "Play"} size={16} className="mr-2" />
+                      {isPlaying ? "Стоп" : "Играть"}
+                    </Button>
+                    <Button onClick={() => setCurrentProject(null)} variant="outline">
+                      <Icon name="ArrowLeft" size={16} className="mr-2" />
+                      К проектам
+                    </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="location" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon name={getCurrentLocation().icon as any} size={24} />
-                  {getCurrentLocation().name}
-                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 mb-4">{getCurrentLocation().description}</p>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {getCurrentLocation().actions.map((action) => (
-                    <Card key={action.id} className="p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-center gap-3 mb-3">
-                        <Icon name={action.icon as any} size={24} className="text-blue-600" />
-                        <div className="flex-1">
-                          <h4 className="font-medium">{action.name}</h4>
-                          <p className="text-sm text-slate-600">{action.description}</p>
+            </Card>
+
+            {isPlaying ? renderGamePreview() : (
+              <Tabs defaultValue="elements" className="space-y-4">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="elements">Элементы</TabsTrigger>
+                  <TabsTrigger value="map">Карта</TabsTrigger>
+                  <TabsTrigger value="logic">Логика</TabsTrigger>
+                  <TabsTrigger value="settings">Настройки</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="elements" className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-semibold">Элементы игры</h3>
+                    <Dialog open={showElementModal} onOpenChange={setShowElementModal}>
+                      <DialogTrigger asChild>
+                        <Button>
+                          <Icon name="Plus" size={16} className="mr-2" />
+                          Добавить элемент
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Добавить элемент</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid grid-cols-2 gap-4">
+                          {Object.entries(elementTemplates).map(([type, template]) => (
+                            <Button
+                              key={type}
+                              variant="outline"
+                              className="h-auto p-4 flex flex-col gap-2"
+                              onClick={() => {
+                                addElement(template);
+                              }}
+                            >
+                              <Icon name={template.icon as any} size={24} />
+                              <span className="capitalize">{type === 'character' ? 'Персонаж' : type === 'item' ? 'Предмет' : type === 'location' ? 'Локация' : 'Действие'}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {currentProject.elements.map((element) => (
+                      <Card key={element.id} className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Icon name={element.icon as any} size={20} />
+                            <Badge variant="outline">{element.type}</Badge>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setSelectedElement(element)}>
+                              <Icon name="Edit" size={14} />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteElement(element.id)}>
+                              <Icon name="Trash" size={14} />
+                            </Button>
+                          </div>
+                        </div>
+                        <h4 className="font-medium">{element.name}</h4>
+                        <p className="text-sm text-slate-600 mt-1">{element.description}</p>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {Object.entries(element.properties).slice(0, 2).map(([key, value]) => (
+                            <div key={key}>{key}: {String(value)}</div>
+                          ))}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="map" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Редактор карты</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="relative bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 h-96 overflow-hidden border-2 border-dashed">
+                        <svg className="w-full h-full" viewBox="0 0 500 400">
+                          {currentProject.elements
+                            .filter(e => e.type === 'location' && e.position)
+                            .map((location) => (
+                              <g key={location.id}>
+                                <circle
+                                  cx={location.position!.x}
+                                  cy={location.position!.y}
+                                  r="25"
+                                  fill="#3b82f6"
+                                  stroke="#1d4ed8"
+                                  strokeWidth="2"
+                                  className="cursor-move"
+                                />
+                                <text
+                                  x={location.position!.x}
+                                  y={location.position!.y + 40}
+                                  textAnchor="middle"
+                                  className="text-xs font-medium fill-slate-700"
+                                >
+                                  {location.name}
+                                </text>
+                              </g>
+                          ))}
+                        </svg>
+                        <div className="absolute bottom-4 left-4 bg-white/90 rounded-lg p-3 text-sm">
+                          <p className="font-medium">💡 Подсказка:</p>
+                          <p>Перетаскивайте локации для изменения карты</p>
                         </div>
                       </div>
-                      {(action.cost?.energy || action.cost?.money) && (
-                        <div className="text-xs text-slate-500 mb-2">
-                          Стоимость: {action.cost.energy && `${action.cost.energy} энергии`} {action.cost.money && `$${action.cost.money}`}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="logic" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Игровая логика</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Textarea
+                        placeholder="Опишите логику игры... (например: 'Когда игрок говорит с персонажем X, показать диалог Y')"
+                        value={currentProject.gameLogic}
+                        onChange={(e) => {
+                          const updatedProject = { ...currentProject, gameLogic: e.target.value };
+                          setCurrentProject(updatedProject);
+                          setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
+                        }}
+                        className="min-h-[200px]"
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="settings" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Настройки проекта</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div>
+                          <Label>Название игры</Label>
+                          <Input 
+                            value={currentProject.name}
+                            onChange={(e) => {
+                              const updatedProject = { ...currentProject, name: e.target.value };
+                              setCurrentProject(updatedProject);
+                              setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
+                            }}
+                          />
                         </div>
-                      )}
-                      <Button 
-                        onClick={() => handleLocationAction(action)}
-                        className="w-full"
-                        disabled={(
-                          (action.cost?.energy && gameStats.energy < action.cost.energy) ||
-                          (action.cost?.money && gameStats.money < action.cost.money)
-                        )}
-                      >
-                        Выполнить
-                      </Button>
-                    </Card>
-                  ))}
-                </div>
-                
-                <div className="mt-6 pt-4 border-t">
-                  <Button onClick={triggerRandomEvent} className="w-full bg-purple-600 hover:bg-purple-700">
-                    <Icon name="Shuffle" size={16} className="mr-2" />
-                    Случайное событие
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="inventory">
-            <Card>
-              <CardHeader>
-                <CardTitle>Инвентарь</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {inventory.map((item) => (
-                    <Card key={item.id} className="p-4">
-                      <div className="flex items-center gap-3">
-                        <Icon name={item.icon as any} size={24} className="text-blue-600" />
-                        <div className="flex-1">
-                          <h4 className="font-medium">{item.name}</h4>
-                          <p className="text-sm text-slate-600">{item.type}</p>
-                          {item.value > 0 && (
-                            <p className="text-sm font-medium text-green-600">${item.value}</p>
-                          )}
+                        <div>
+                          <Label>Описание</Label>
+                          <Textarea 
+                            value={currentProject.description}
+                            onChange={(e) => {
+                              const updatedProject = { ...currentProject, description: e.target.value };
+                              setCurrentProject(updatedProject);
+                              setProjects(prev => prev.map(p => p.id === currentProject.id ? updatedProject : p));
+                            }}
+                          />
                         </div>
                       </div>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            )}
 
-          <TabsContent value="achievements">
-            <Card>
-              <CardHeader>
-                <CardTitle>Достижения</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {achievements.map((achievement) => (
-                    <Card key={achievement.id} className={`p-4 ${achievement.unlocked ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
-                      <div className="flex items-center gap-3">
-                        <Icon name={achievement.icon as any} size={24} className={achievement.unlocked ? 'text-green-600' : 'text-slate-400'} />
-                        <div className="flex-1">
-                          <h4 className="font-medium">{achievement.title}</h4>
-                          <p className="text-sm text-slate-600">{achievement.description}</p>
-                        </div>
-                        {achievement.unlocked && (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            Выполнено
-                          </Badge>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="shop">
-            <Card>
-              <CardHeader>
-                <CardTitle>Магазин</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="Coffee" size={24} className="text-brown-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Кофе</h4>
-                        <p className="text-sm text-slate-600">+10 энергии</p>
-                        <p className="text-sm font-medium text-green-600">$5</p>
-                      </div>
-                      <Button size="sm">Купить</Button>
+            {/* Модальное окно редактирования элемента */}
+            {selectedElement && (
+              <Dialog open={!!selectedElement} onOpenChange={() => setSelectedElement(null)}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Редактировать элемент</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Название</Label>
+                      <Input 
+                        value={selectedElement.name}
+                        onChange={(e) => setSelectedElement({...selectedElement, name: e.target.value})}
+                      />
                     </div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="Shirt" size={24} className="text-blue-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Новая одежда</h4>
-                        <p className="text-sm text-slate-600">+5 счастье</p>
-                        <p className="text-sm font-medium text-green-600">$150</p>
-                      </div>
-                      <Button size="sm">Купить</Button>
+                    <div>
+                      <Label>Описание</Label>
+                      <Textarea 
+                        value={selectedElement.description}
+                        onChange={(e) => setSelectedElement({...selectedElement, description: e.target.value})}
+                      />
                     </div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="Book" size={24} className="text-purple-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Книга</h4>
-                        <p className="text-sm text-slate-600">+3 уровень</p>
-                        <p className="text-sm font-medium text-green-600">$25</p>
-                      </div>
-                      <Button size="sm">Купить</Button>
+                    <div>
+                      <Label>Иконка</Label>
+                      <Select value={selectedElement.icon} onValueChange={(value) => setSelectedElement({...selectedElement, icon: value})}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="User">User</SelectItem>
+                          <SelectItem value="Package">Package</SelectItem>
+                          <SelectItem value="MapPin">MapPin</SelectItem>
+                          <SelectItem value="Zap">Zap</SelectItem>
+                          <SelectItem value="Heart">Heart</SelectItem>
+                          <SelectItem value="Sword">Sword</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </Card>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="characters">
-            <Card>
-              <CardHeader>
-                <CardTitle>Персонажи</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="User" size={24} className="text-blue-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Анна</h4>
-                        <p className="text-sm text-slate-600">Лучшая подруга</p>
-                        <Badge variant="secondary">Дружба: 85%</Badge>
-                      </div>
-                    </div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="User" size={24} className="text-green-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Михаил</h4>
-                        <p className="text-sm text-slate-600">Коллега по работе</p>
-                        <Badge variant="secondary">Знакомство: 45%</Badge>
-                      </div>
-                    </div>
-                  </Card>
-                  <Card className="p-4">
-                    <div className="flex items-center gap-3">
-                      <Icon name="User" size={24} className="text-purple-600" />
-                      <div className="flex-1">
-                        <h4 className="font-medium">Елена</h4>
-                        <p className="text-sm text-slate-600">Соседка</p>
-                        <Badge variant="secondary">Знакомство: 20%</Badge>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Event Modal */}
-        {showEventModal && currentEvent && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <Card className="max-w-md w-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon name="AlertCircle" size={24} className="text-orange-500" />
-                  {currentEvent.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-slate-600 mb-4">{currentEvent.description}</p>
-                <div className="space-y-2">
-                  {currentEvent.choices.map((choice, index) => (
-                    <Button 
-                      key={index}
-                      onClick={() => handleChoice(choice)}
-                      className="w-full justify-start"
-                      variant={index === 0 ? "default" : "outline"}
-                    >
-                      {choice.text}
+                    <Button onClick={() => {
+                      updateElement(selectedElement);
+                      setSelectedElement(null);
+                    }} className="w-full">
+                      Сохранить
                     </Button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         )}
       </div>
@@ -649,4 +578,4 @@ const RealLifeGame = () => {
   );
 };
 
-export default RealLifeGame;
+export default GameEditor;
